@@ -63,6 +63,39 @@ export async function catalogRoutes(fastify: FastifyInstance): Promise<void> {
     });
   });
 
+  // --- UPDATE CATEGORY (RENAME, SUBCATEGORIES, DESCRIPTION) ---
+  fastify.put('/api/v1/categories/:id', async (req: FastifyRequest<{
+    Params: { id: string };
+    Body: { name?: string; description?: string; subcategories?: string[]; displayOrder?: number };
+  }>, reply: FastifyReply) => {
+    const { id } = req.params;
+    const { name, description, subcategories, displayOrder } = req.body;
+
+    const cat = await db.execute({ sql: 'SELECT * FROM categories WHERE id = ?', args: [id] });
+    if (cat.rows.length === 0) {
+      return reply.status(404).send({ error: 'Category not found' });
+    }
+
+    const subcatsJson = subcategories !== undefined ? JSON.stringify(subcategories) : null;
+    await db.execute({
+      sql: `UPDATE categories
+            SET name = coalesce(?, name),
+                description = coalesce(?, description),
+                subcategories = coalesce(?, subcategories),
+                display_order = coalesce(?, display_order)
+            WHERE id = ?`,
+      args: [name ? name.trim() : null, description !== undefined ? description : null, subcatsJson, displayOrder !== undefined ? displayOrder : null, id],
+    });
+
+    return reply.send({
+      id,
+      name: name ? name.trim() : cat.rows[0].name,
+      description: description !== undefined ? description : cat.rows[0].description,
+      subcategories: subcategories || [],
+      isActive: Boolean(cat.rows[0].is_active),
+    });
+  });
+
   // --- DELETE CATEGORY & CASCADE DELETE ALL ITS ITEMS ---
   fastify.delete('/api/v1/categories/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const { id } = req.params;
@@ -85,7 +118,7 @@ export async function catalogRoutes(fastify: FastifyInstance): Promise<void> {
         args: [id],
       });
 
-      return reply.send({ success: true, deletedCategoryId: id, rowCount: res.rowCount });
+      return reply.send({ success: true, deletedCategoryId: id });
     } catch (err: any) {
       return reply.status(500).send({ error: err.message || 'Failed to delete category' });
     }
