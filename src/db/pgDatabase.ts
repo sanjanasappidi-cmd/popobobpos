@@ -80,6 +80,12 @@ export class PgDatabase {
     sql = sql.replace(/datetime\('now'\)/gi, 'NOW()');
     sql = sql.replace(/is_active\s*=\s*1\b/gi, 'is_active = true');
     sql = sql.replace(/is_active\s*=\s*0\b/gi, 'is_active = false');
+    if (/INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql)) {
+      sql = sql.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT INTO');
+      if (!/ON\s+CONFLICT/i.test(sql)) {
+        sql += ' ON CONFLICT DO NOTHING';
+      }
+    }
     sql = this.convertParamMarkers(sql);
 
     const res = await pool.query(sql, args);

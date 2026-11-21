@@ -158,7 +158,7 @@ export async function catalogRoutes(fastify: FastifyInstance): Promise<void> {
     if (addOnIds && addOnIds.length > 0) {
       for (const addonId of addOnIds) {
         await db.execute({
-          sql: 'INSERT OR IGNORE INTO product_addons (product_id, addon_id) VALUES (?, ?)',
+          sql: 'INSERT INTO product_addons (product_id, addon_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
           args: [id, addonId],
         });
       }
