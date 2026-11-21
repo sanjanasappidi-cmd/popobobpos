@@ -116,15 +116,16 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     // --- AUTOMATIC KOT ENGINE ---
-    // Generate sequential daily KOT Ticket Number (#1, #2, #3...)
+    // Generate sequential daily KOT Ticket Number formatted for QSR industry (KOT #001, KOT #002...)
     const todayStr = new Date().toISOString().slice(0, 10);
     const kotSeq = await getNextSequence(`kot-${outletId}-${todayStr}`);
+    const formattedKotNumber = `KOT #${String(kotSeq).padStart(3, '0')}`;
     const ticketId = `kot-${Date.now()}`;
 
     await db.execute({
       sql: `INSERT INTO kitchen_tickets (id, ticket_number, outlet_id, order_id, order_number_snapshot, order_type_snapshot, table_number_snapshot, customer_notes_snapshot)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [ticketId, `#${kotSeq}`, outletId, orderId, orderNumber, orderType, tableNumber || null, customerNotes || null],
+      args: [ticketId, formattedKotNumber, outletId, orderId, orderNumber, orderType, tableNumber || null, customerNotes || null],
     });
 
     for (const ri of resolvedItems) {
@@ -160,6 +161,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     const createdOrder = {
       id: orderId,
       orderNumber,
+      kotNumber: formattedKotNumber,
       orderType,
       status: 'CONFIRMED',
       customerName,
@@ -212,9 +214,16 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
 
+    const latestTicketRes = await db.execute({
+      sql: 'SELECT ticket_number FROM kitchen_tickets WHERE order_id = ? ORDER BY created_at DESC LIMIT 1',
+      args: [id],
+    });
+    const kotNumber = latestTicketRes.rows.length > 0 ? String(latestTicketRes.rows[0].ticket_number) : undefined;
+
     return reply.send({
       id: String(order.id),
       orderNumber: String(order.order_number),
+      kotNumber,
       orderType: String(order.order_type),
       status: String(order.status),
       customerName: order.customer_name ? String(order.customer_name) : undefined,
@@ -437,17 +446,19 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       args: [newSubtotal, newTaxable, newTax, newTotal, orderId],
     });
 
+    let latestKotNumber: string | undefined;
     // Generate supplementary KOT ticket for the kitchen
     if (addedKotItems.length > 0) {
       const outletId = String(order.outlet_id);
       const todayStr = new Date().toISOString().slice(0, 10);
       const kotSeq = await getNextSequence(`kot-${outletId}-${todayStr}`);
       const suppTicketId = `kot-${Date.now()}`;
+      latestKotNumber = `KOT #${String(kotSeq).padStart(3, '0')} (Round 2)`;
 
       await db.execute({
         sql: `INSERT INTO kitchen_tickets (id, ticket_number, outlet_id, order_id, order_number_snapshot, order_type_snapshot, table_number_snapshot, customer_notes_snapshot)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [suppTicketId, `#${kotSeq} (Running)`, outletId, orderId, String(order.order_number), String(order.order_type), order.table_number ? String(order.table_number) : null, 'Table Running Order Top-up'],
+        args: [suppTicketId, latestKotNumber, outletId, orderId, String(order.order_number), String(order.order_type), order.table_number ? String(order.table_number) : null, 'Table Running Order Top-up'],
       });
 
       for (const ki of addedKotItems) {
@@ -469,7 +480,43 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const updatedRes = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
-    return reply.send(updatedRes.rows[0]);
+    const updOrder = updatedRes.rows[0];
+    const allItemsRes = await db.execute({ sql: 'SELECT * FROM order_items WHERE order_id = ?', args: [orderId] });
+    const allItems = [];
+    for (const row of allItemsRes.rows) {
+      const addonsRes = await db.execute({ sql: 'SELECT * FROM order_item_addons WHERE order_item_id = ?', args: [row.id] });
+      allItems.push({
+        id: String(row.id),
+        productNameSnapshot: String(row.product_name_snapshot),
+        unitPriceSnapshot: Number(row.unit_price_snapshot),
+        quantity: Number(row.quantity),
+        lineTotalSnapshot: Number(row.line_total_snapshot),
+        itemNotes: row.item_notes ? String(row.item_notes) : undefined,
+        addOns: addonsRes.rows.map((a) => ({
+          id: String(a.addon_id),
+          name: String(a.addon_name_snapshot),
+          price: Number(a.addon_price_snapshot),
+        })),
+      });
+    }
+
+    return reply.send({
+      id: String(updOrder.id),
+      orderNumber: String(updOrder.order_number),
+      kotNumber: latestKotNumber,
+      orderType: String(updOrder.order_type),
+      status: String(updOrder.status),
+      customerName: updOrder.customer_name ? String(updOrder.customer_name) : undefined,
+      customerPhone: updOrder.customer_phone ? String(updOrder.customer_phone) : undefined,
+      tableNumber: updOrder.table_number ? String(updOrder.table_number) : undefined,
+      subtotal: Number(updOrder.subtotal),
+      discountAmount: Number(updOrder.discount_amount),
+      taxableAmount: Number(updOrder.taxable_amount),
+      taxAmount: Number(updOrder.tax_amount),
+      totalAmount: Number(updOrder.total_amount),
+      items: allItems,
+      createdAt: toIsoString(updOrder.created_at),
+    });
   });
 
   // --- UPDATE ORDER STATUS / CANCEL ORDER ---
