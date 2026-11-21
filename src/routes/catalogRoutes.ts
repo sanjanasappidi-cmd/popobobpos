@@ -217,7 +217,7 @@ export async function catalogRoutes(fastify: FastifyInstance): Promise<void> {
       await db.execute({ sql: 'DELETE FROM product_addons WHERE product_id = ?', args: [id] });
       for (const addonId of addOnIds) {
         await db.execute({
-          sql: 'INSERT INTO product_addons (product_id, addon_id) VALUES (?, ?)',
+          sql: 'INSERT INTO product_addons (product_id, addon_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
           args: [id, addonId],
         });
       }
@@ -342,7 +342,7 @@ export async function catalogRoutes(fastify: FastifyInstance): Promise<void> {
     await db.execute({ sql: 'DELETE FROM product_addons WHERE product_id = ?', args: [id] });
     for (const addonId of addOnIds) {
       await db.execute({
-        sql: 'INSERT INTO product_addons (product_id, addon_id) VALUES (?, ?)',
+        sql: 'INSERT INTO product_addons (product_id, addon_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
         args: [id, addonId],
       });
     }
