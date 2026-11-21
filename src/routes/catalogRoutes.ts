@@ -63,6 +63,74 @@ export async function catalogRoutes(fastify: FastifyInstance): Promise<void> {
     });
   });
 
+  // --- DELETE CATEGORY & CASCADE DELETE ALL ITS ITEMS ---
+  fastify.delete('/api/v1/categories/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const { id } = req.params;
+    try {
+      // 1. Delete product_addons mapping for all products in this category
+      await db.execute({
+        sql: 'DELETE FROM product_addons WHERE product_id IN (SELECT id FROM products WHERE category_id = ?)',
+        args: [id],
+      });
+
+      // 2. Delete all products in this category
+      await db.execute({
+        sql: 'DELETE FROM products WHERE category_id = ?',
+        args: [id],
+      });
+
+      // 3. Delete the category itself
+      const res = await db.execute({
+        sql: 'DELETE FROM categories WHERE id = ?',
+        args: [id],
+      });
+
+      return reply.send({ success: true, deletedCategoryId: id, rowCount: res.rowCount });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message || 'Failed to delete category' });
+    }
+  });
+
+  // --- DELETE SUBCATEGORY & CASCADE DELETE ALL ITS ITEMS ---
+  fastify.delete('/api/v1/categories/:id/subcategories/:subcat', async (req: FastifyRequest<{
+    Params: { id: string; subcat: string };
+  }>, reply: FastifyReply) => {
+    const { id, subcat } = req.params;
+    const decodedSubcat = decodeURIComponent(subcat);
+
+    try {
+      // 1. Delete product_addons mapping for all products in this category & subcategory
+      await db.execute({
+        sql: 'DELETE FROM product_addons WHERE product_id IN (SELECT id FROM products WHERE category_id = ? AND LOWER(subcategory) = LOWER(?))',
+        args: [id, decodedSubcat],
+      });
+
+      // 2. Delete all products in this category & subcategory
+      await db.execute({
+        sql: 'DELETE FROM products WHERE category_id = ? AND LOWER(subcategory) = LOWER(?)',
+        args: [id, decodedSubcat],
+      });
+
+      // 3. Update category to remove this subcategory from its JSON array
+      const catRes = await db.execute({ sql: 'SELECT * FROM categories WHERE id = ?', args: [id] });
+      if (catRes.rows.length > 0) {
+        const raw = catRes.rows[0].subcategories;
+        let subcats: string[] = Array.isArray(raw)
+          ? raw
+          : (typeof raw === 'string' && raw.startsWith('[') ? JSON.parse(raw) : []);
+        subcats = subcats.filter((s) => s.toLowerCase() !== decodedSubcat.toLowerCase());
+        await db.execute({
+          sql: 'UPDATE categories SET subcategories = ? WHERE id = ?',
+          args: [JSON.stringify(subcats), id],
+        });
+      }
+
+      return reply.send({ success: true, categoryId: id, subcategory: decodedSubcat });
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message || 'Failed to delete subcategory' });
+    }
+  });
+
   // --- PRODUCTS ---
   fastify.get('/api/v1/products', async (req: FastifyRequest<{ Querystring: { categoryId?: string } }>, reply: FastifyReply) => {
     const { categoryId } = req.query;
