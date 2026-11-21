@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { initDatabase, isPostgresActive } from './db/database.js';
+import { initDatabase, isPostgresActive, lastPgError } from './db/database.js';
 import { catalogRoutes } from './routes/catalogRoutes.js';
 import { orderRoutes } from './routes/orderRoutes.js';
 import { billingRoutes } from './routes/billingRoutes.js';
@@ -68,6 +68,9 @@ async function startServer() {
     fastify.get('/health', async () => ({
       status: 'UP',
       database: isPostgresActive ? 'POSTGRESQL' : 'SQLITE_WAL',
+      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+      databaseType: process.env.DATABASE_TYPE || 'unset',
+      pgError: lastPgError,
       memoryUsageMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
       uptimeSeconds: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),

@@ -10,6 +10,7 @@ const sqliteClient: Client = createClient({
 });
 
 export let isPostgresActive = false;
+export let lastPgError: string | null = null;
 
 export const db = {
   execute: async (statement: string | { sql: string; args?: any[] }) => {
@@ -42,6 +43,7 @@ export async function initDatabase(): Promise<void> {
         return;
       }
     } catch (err: any) {
+      lastPgError = err.message;
       console.warn('[Database] PostgreSQL connection attempt failed:', err.message);
       console.warn('[Database] Falling back to SQLite WAL engine until PostgreSQL credentials are provided.');
     }
