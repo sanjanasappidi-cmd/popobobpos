@@ -23,6 +23,7 @@ export class PgDatabase {
   private initPool() {
     const connectionString =
       process.env.DATABASE_URL ||
+      (process.env as any)['DATABASE_URL.'] ||
       `postgresql://${process.env.PGUSER || 'postgres'}:${encodeURIComponent(process.env.PGPASSWORD || 'postgres')}@${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || '5432'}/${process.env.PGDATABASE || 'pob_pos'}`;
 
     const isRemote =
@@ -101,7 +102,7 @@ export class PgDatabase {
 
   public async ensureDatabaseExists(): Promise<void> {
     const targetDb = process.env.PGDATABASE || 'pob_pos';
-    if (process.env.DATABASE_URL || targetDb === 'postgres') return;
+    if (process.env.DATABASE_URL || (process.env as any)['DATABASE_URL.'] || targetDb === 'postgres') return;
 
     const adminClient = new pg.Client({
       host: process.env.PGHOST || 'localhost',

@@ -23,11 +23,11 @@ export const db = {
 
 export async function initDatabase(): Promise<void> {
   const isProd = process.env.NODE_ENV === 'production';
-  const connStr = process.env.DATABASE_URL || '';
+  const connStr = process.env.DATABASE_URL || (process.env as any)['DATABASE_URL.'] || '';
   const isLocalDbUrl = connStr.includes('127.0.0.1') || connStr.includes('localhost');
 
   // Test and initialize PostgreSQL if requested or configured
-  if ((process.env.DATABASE_TYPE === 'postgres' || process.env.DATABASE_URL) && !(isProd && isLocalDbUrl)) {
+  if ((process.env.DATABASE_TYPE === 'postgres' || connStr) && !(isProd && isLocalDbUrl)) {
     try {
       const hostPart = connStr ? connStr.split('@')[1]?.split('/')[0] : `${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || '5432'}`;
       console.log(`[Database] Initializing PostgreSQL connection to host: ${hostPart}...`);

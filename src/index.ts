@@ -68,7 +68,7 @@ async function startServer() {
     fastify.get('/health', async () => ({
       status: 'UP',
       database: isPostgresActive ? 'POSTGRESQL' : 'SQLITE_WAL',
-      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+      hasDatabaseUrl: Boolean(process.env.DATABASE_URL || (process.env as any)['DATABASE_URL.']),
       databaseType: process.env.DATABASE_TYPE || 'unset',
       pgError: lastPgError,
       memoryUsageMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
